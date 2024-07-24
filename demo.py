@@ -11,17 +11,21 @@ import numpy as np
 from loguru import logger
 from progress.bar import Bar
 
+# torch.ones((10,10)).cuda()
+
 from configs.config import get_cfg_defaults
 from lib.data.datasets import CustomDataset
 from lib.utils.imutils import avg_preds
 from lib.utils.transforms import matrix_to_axis_angle
+
 from lib.models import build_network, build_body_model
-from lib.models.preproc.detector import DetectionModel
+from lib.models.preproc.detector import DetectionModel # core dumped here
 from lib.models.preproc.extractor import FeatureExtractor
 from lib.models.smplify import TemporalSMPLify
 
 try: 
-    from lib.models.preproc.slam import SLAMModel
+    import ipdb;ipdb.set_trace()
+    from lib.models.preproc.slam import SLAMModel # Segmentation fault (core dumped)
     _run_global = True
 except: 
     logger.info('DPVO is not properly installed. Only estimate in local coordinates !')
@@ -41,6 +45,8 @@ def run(cfg,
     fps = cap.get(cv2.CAP_PROP_FPS)
     length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     width, height = cap.get(cv2.CAP_PROP_FRAME_WIDTH), cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    
+    # import ipdb;ipdb.set_trace()
     
     # Whether or not estimating motion in global coordinates
     run_global = run_global and _run_global

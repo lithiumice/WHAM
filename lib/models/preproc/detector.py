@@ -10,13 +10,23 @@ import torch.nn as nn
 import scipy.signal as signal
 from progress.bar import Bar
 
+
 from ultralytics import YOLO
-from mmpose.apis import (
-    inference_top_down_pose_model,
-    init_pose_model,
-    get_track_id,
-    vis_pose_result,
-)
+# import ipdb;ipdb.set_trace()
+
+from mmpose.apis import inference_top_down_pose_model
+from mmpose.apis import init_pose_model
+from mmpose.apis import get_track_id
+from mmpose.apis import vis_pose_result
+
+
+# from mmpose.apis import (
+#     inference_top_down_pose_model,
+#     init_pose_model,
+#     get_track_id,
+#     vis_pose_result,
+# ) # core dumped here
+# import ipdb;ipdb.set_trace()
 
 ROOT_DIR = osp.abspath(f"{__file__}/../../../../")
 VIT_DIR = osp.join(ROOT_DIR, "third-party/ViTPose")
@@ -26,6 +36,8 @@ BBOX_CONF = 0.5
 TRACKING_THR = 0.1
 MINIMUM_FRMAES = 30
 MINIMUM_JOINTS = 6
+
+import ipdb;ipdb.set_trace()
 
 class DetectionModel(object):
     def __init__(self, device):

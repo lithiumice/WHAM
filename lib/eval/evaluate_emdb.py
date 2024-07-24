@@ -26,7 +26,7 @@ from lib.eval.eval_utils import (
     global_align_joints,
     compute_rte,
     compute_jitter,
-    compute_foot_sliding
+    compute_foot_sliding,
     batch_compute_similarity_transform_torch,
 )
 from lib.utils import transforms
@@ -71,6 +71,14 @@ def main(cfg, args):
     tt = lambda x: torch.from_numpy(x).float().to(cfg.DEVICE)
     accumulator = defaultdict(list)
     bar = Bar('Inference', fill='#', max=len(eval_loader))
+    
+    if args.eval_difftraj:
+        import sys
+        sys.path.insert(0, "/home/hualin/MotionCapture/DiffTraj")
+        from difftraj import DiffTraj
+        from difftraj_api import DIFFTRAJ_CONFIG_1
+        traj_predictor = DiffTraj(**DIFFTRAJ_CONFIG_1)
+        
     with torch.no_grad():
         for i in range(len(eval_loader)):
             # Original batch
@@ -110,9 +118,20 @@ def main(cfg, args):
                 network.pred_contact = avg_contact.view_as(network.pred_contact)
                 output = network.forward_smpl(**kwargs)
                 pred = network.refine_trajectory(output, return_y_up=True, **kwargs)
-            
+                
+            if args.eval_difftraj:
+                # import ipdb;ipdb.set_trace()
+                def totype(x): return x.float().cuda()
+                pred_trans_world = totype(pred["trans_world"][0])
+                pred_root_world = totype(transforms.matrix_to_axis_angle(pred["poses_root_world"]).reshape(-1, 3))
+                pred_body_pose = totype(transforms.matrix_to_axis_angle(pred["poses_body"]).reshape(-1, 69))
+                difftraj_root, difftraj_trans = traj_predictor(pred_root_world, pred_body_pose, pred_trans_world)
+                pred["poses_root_world"] = transforms.axis_angle_to_matrix(difftraj_root)
+                pred["trans_world"] = difftraj_trans
+                            
             # <======= Prepare groundtruth data
             subj, seq = batch['vid'][:2], batch['vid'][3:]
+            # import ipdb;ipdb.set_trace()
             annot_pth = glob(osp.join(_C.PATHS.EMDB_PTH, subj, seq, '*_data.pkl'))[0]
             annot = pickle.load(open(annot_pth, 'rb'))
             
@@ -165,10 +184,7 @@ def main(cfg, args):
             accel = compute_error_accel(joints_pred=pred_j3d_cam.cpu(), joints_gt=target_j3d_cam.cpu())[1:-1]
             accel = accel * (30 ** 2)       # per frame^s to per s^2
             
-            summary_string = f'{batch["vid"]} | PA-MPJPE: {pa_mpjpe.mean():.1f}   MPJPE: {mpjpe.mean():.1f}   PVE: {pve.mean():.1f}'
-            bar.suffix = summary_string
-            bar.next()
-            # =======>
+
             
             # <======= Evaluation on the global motion
             chunk_length = 100
@@ -211,6 +227,18 @@ def main(cfg, args):
             accumulator['RTE'].append(rte)
             accumulator['jitter'].append(jitter)
             accumulator['FS'].append(foot_sliding)
+                
+            summary_string = f"{batch['vid']} | PA-MPJPE: {pa_mpjpe.mean():.1f}mm   MPJPE: {mpjpe.mean():.1f}mm   PVE: {pve.mean():.1f}mm   "\
+                                f"Accel: {accel.mean():.3f}mm/s^2   "\
+                                f"wa_mpjpe_100: {wa_mpjpe.mean():.1f}   "\
+                                f"w_mpjpe_100: {w_mpjpe.mean():.1f}   "\
+                                f"RTE: {rte.mean():.1f}   "\
+                                f"jitter: {jitter.mean():.1f}   "\
+                                f"FS: {foot_sliding.mean():.1f}   "
+            # summary_string = f'{batch["vid"]} | PA-MPJPE: {pa_mpjpe.mean():.1f}   MPJPE: {mpjpe.mean():.1f}   PVE: {pve.mean():.1f}'
+            bar.suffix = summary_string
+            bar.next()
+            # =======>            
             # =======>
             
     for k, v in accumulator.items():

@@ -91,17 +91,13 @@ def bool_arg(value):
 def parse_args(test=False):
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--cfg', type=str, default='./configs/debug.yaml', help='cfg file path')
-    parser.add_argument(
-        "--eval-set", type=str, default='3dpw', help="Evaluation dataset")
-    parser.add_argument(
-        "--eval-split", type=str, default='test', help="Evaluation data split")
-    parser.add_argument('--render', default=False, type=bool_arg,
-                        help='Render SMPL meshes after the evaluation')
-    parser.add_argument('--save-results', default=False, type=bool_arg,
-                        help='Save SMPL parameters after the evaluation')
-    parser.add_argument(
-        "opts", default=None, nargs=argparse.REMAINDER,
-        help="Modify config options using the command-line")
+    parser.add_argument("--eval-set", type=str, default='3dpw', help="Evaluation dataset")
+    parser.add_argument("--eval-split", type=str, default='test', help="Evaluation data split")
+    parser.add_argument('--render', default=False, type=bool_arg,help='Render SMPL meshes after the evaluation')
+    parser.add_argument('--save-results', default=False, type=bool_arg,help='Save SMPL parameters after the evaluation')
+    parser.add_argument("--eval_difftraj", action="store_true", help="evaluate difftraj")
+
+    parser.add_argument("opts", default=None, nargs=argparse.REMAINDER,help="Modify config options using the command-line")
     
     args = parser.parse_args()
     print(args, end='\n\n')

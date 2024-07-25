@@ -19,8 +19,9 @@ conda install pytorch-scatter=2.0.9 -c rusty1s
 pip install .
 
 
-mkdir -p datasets
-ln -s /data/hualin/EMDB datasets/EMDB
+# mkdir -p datasets
+# ln -s /data/hualin/EMDB dataset/EMDB
+ln -s /data/hualin/WHAM_dataset dataset
 
 cd dataset/
 gdown --folder 13T2ghVvrw_fEk3X-8L0e6DVSYx_Og8o3

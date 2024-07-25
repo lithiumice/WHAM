@@ -10,6 +10,7 @@ import numpy as np
 from smplx import SMPL
 from loguru import logger
 from progress.bar import Bar
+import sys
 
 from configs import constants as _C
 from configs.config import parse_args
@@ -73,11 +74,18 @@ def main(cfg, args):
     bar = Bar('Inference', fill='#', max=len(eval_loader))
     
     if args.eval_difftraj:
-        import sys
         sys.path.insert(0, "/home/hualin/MotionCapture/DiffTraj")
         from difftraj import DiffTraj
         from difftraj_api import DIFFTRAJ_CONFIG_1
         traj_predictor = DiffTraj(**DIFFTRAJ_CONFIG_1)
+        
+    # import ipdb;ipdb.set_trace()
+    if args.eval_vae:
+        sys.path.insert(0, "/home/hualin/MotionCapture/DiffTraj")
+        from eval.eval_difftraj import init_vae_model, infer_vae, infer_vae_from_axis
+        from utils.traj_utils import (traj_local2global_heading, )
+        from utils.tensor_utils import apply_cvt_R, apply_cvt_T, zup_to_yup
+        traj_predictor = init_vae_model()
         
     with torch.no_grad():
         for i in range(len(eval_loader)):
@@ -85,6 +93,18 @@ def main(cfg, args):
             batch = eval_loader.dataset.load_data(i, False)
             x, inits, features, kwargs, gt = prepare_batch(batch, cfg.DEVICE, cfg.TRAIN.STAGE == 'stage2')
             
+            skpi_flag = False
+            if args.skip_non_flat_ground:
+                vid_id = batch['vid']
+                keys_to_skip = ["up", "down"]
+                for k in keys_to_skip:
+                    if k in vid_id:
+                        skpi_flag = True
+                        break
+            if skpi_flag: 
+                print(f"\n => [WARN] {k} in {vid_id}, we remove non-flat ground case to evaluate difftraj...")
+                continue     
+                
             # Align with groundtruth data to the first frame
             cam2yup = batch['R'][0][:1].to(cfg.DEVICE)
             cam2ydown = cam2yup @ yup2ydown
@@ -119,9 +139,10 @@ def main(cfg, args):
                 output = network.forward_smpl(**kwargs)
                 pred = network.refine_trajectory(output, return_y_up=True, **kwargs)
                 
+            def totype(x): return x.float().cuda()
+            # import ipdb;ipdb.set_trace()
+            
             if args.eval_difftraj:
-                # import ipdb;ipdb.set_trace()
-                def totype(x): return x.float().cuda()
                 pred_trans_world = totype(pred["trans_world"][0])
                 pred_root_world = totype(transforms.matrix_to_axis_angle(pred["poses_root_world"]).reshape(-1, 3))
                 pred_body_pose = totype(transforms.matrix_to_axis_angle(pred["poses_body"]).reshape(-1, 69))
@@ -129,6 +150,16 @@ def main(cfg, args):
                 pred["poses_root_world"] = transforms.axis_angle_to_matrix(difftraj_root)
                 pred["trans_world"] = difftraj_trans
                             
+            if args.eval_vae:
+                pred_body_pose = totype(transforms.matrix_to_axis_angle(pred["poses_body"]).reshape(-1, 23, 3))
+                sample_rep_pred = infer_vae_from_axis(traj_predictor, pred_body_pose)
+
+                transl_amass_pred, orient_q_amass_pred = traj_local2global_heading(sample_rep_pred)
+                root = apply_cvt_R(zup_to_yup, orient_q_amass_pred, in_type='quat', out_type='aa')
+                trans = apply_cvt_T(zup_to_yup, transl_amass_pred)   
+                pred["poses_root_world"] = transforms.axis_angle_to_matrix(root)
+                pred["trans_world"] = trans
+                                                            
             # <======= Prepare groundtruth data
             subj, seq = batch['vid'][:2], batch['vid'][3:]
             # import ipdb;ipdb.set_trace()

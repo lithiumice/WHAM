@@ -67,25 +67,53 @@ python -m lib.eval.evaluate_3dpw --cfg configs/yamls/demo.yaml TRAIN.CHECKPOINT 
 # Evaluate on RICH dataset
 python -m lib.eval.evaluate_rich --cfg configs/yamls/demo.yaml TRAIN.CHECKPOINT checkpoints/wham_vit_w_3dpw.pth.tar
 
-# Evaluate on EMDB dataset (also computes W-MPJPE and WA-MPJPE)
-python -m lib.eval.evaluate_emdb --cfg configs/yamls/demo.yaml --eval-split 1 TRAIN.CHECKPOINT checkpoints/wham_vit_w_3dpw.pth.tar   # EMDB 1
-# 2024-07-24 16:51:11.460 | INFO     | __main__:main:232 - Evaluation on EMDB 1, 
-# PA_MPJPE: 50.4424, MPJPE: 79.6760, PVE: 94.3941, ACCEL: 5.3397, WA_MPJPE: 177.8460, W_MPJPE: 353.0438, RTE: 3.3671, JITTER: 22.5126, FS: 4.6029,
+# # Evaluate on EMDB dataset (also computes W-MPJPE and WA-MPJPE)
+# python -m lib.eval.evaluate_emdb --cfg configs/yamls/demo.yaml --eval-split 1 TRAIN.CHECKPOINT checkpoints/wham_vit_w_3dpw.pth.tar   # EMDB 1
+# # 2024-07-24 16:51:11.460 | INFO     | __main__:main:232 - Evaluation on EMDB 1, 
+# # PA_MPJPE: 50.4424, MPJPE: 79.6760, PVE: 94.3941, ACCEL: 5.3397, WA_MPJPE: 177.8460, W_MPJPE: 353.0438, RTE: 3.3671, JITTER: 22.5126, FS: 4.6029,
+
+
 
 python -m lib.eval.evaluate_emdb --cfg configs/yamls/demo.yaml --eval-split 2 TRAIN.CHECKPOINT checkpoints/wham_vit_w_3dpw.pth.tar   # EMDB 2
 # 2024-07-24 16:59:54.009 | INFO     | __main__:main:232 - Evaluation on EMDB 2, 
 # PA_MPJPE: 38.1531, MPJPE: 59.2949, PVE: 71.5892, ACCEL: 4.9934, WA_MPJPE: 131.0739, W_MPJPE: 335.3340, RTE: 4.0709, JITTER: 20.9980, FS: 4.3861,
 
-python -m lib.eval.evaluate_emdb --cfg configs/yamls/demo.yaml --eval-split 1 --eval_difftraj TRAIN.CHECKPOINT checkpoints/wham_vit_w_3dpw.pth.tar 
-# conclusion: worse than original...
-# 2024-07-24 17:44:08.585 | INFO     | __main__:main:250 - Evaluation on EMDB 1, 
-# PA_MPJPE: 50.4424, MPJPE: 79.6760, PVE: 94.3941, ACCEL: 5.3397, WA_MPJPE: 182.1308, W_MPJPE: 368.3256, RTE: 3.2960, JITTER: 23.0215, FS: 5.6755,
 
+
+# python -m lib.eval.evaluate_emdb --cfg configs/yamls/demo.yaml --eval-split 1 --eval_difftraj TRAIN.CHECKPOINT checkpoints/wham_vit_w_3dpw.pth.tar 
+# # conclusion: worse than original...
+# # 2024-07-24 17:44:08.585 | INFO     | __main__:main:250 - Evaluation on EMDB 1, 
+# # PA_MPJPE: 50.4424, MPJPE: 79.6760, PVE: 94.3941, ACCEL: 5.3397, WA_MPJPE: 182.1308, W_MPJPE: 368.3256, RTE: 3.2960, JITTER: 23.0215, FS: 5.6755,
+
+
+
+# difftraj
+# EMDB 2
+# non flat
 python -m lib.eval.evaluate_emdb --cfg configs/yamls/demo.yaml --eval-split 2 --eval_difftraj TRAIN.CHECKPOINT checkpoints/wham_vit_w_3dpw.pth.tar 
 # 2024-07-24 17:38:27.794 | INFO     | __main__:main:250 - Evaluation on EMDB 2, 
 # PA_MPJPE: 38.1531, MPJPE: 59.2949, PVE: 71.5892, ACCEL: 4.9934, WA_MPJPE: 125.4108, W_MPJPE: 319.6152, RTE: 3.7564, JITTER: 18.2137, FS: 5.4969,
 
-TODO: remove non-flat ground cases and redo evaluation.
+
+
+# done: remove non-flat ground cases and redo evaluation.
+# original wham
+python -m lib.eval.evaluate_emdb --cfg configs/yamls/demo.yaml --eval-split 2 --skip_non_flat_ground TRAIN.CHECKPOINT checkpoints/wham_vit_w_3dpw.pth.tar 
+# Evaluation on EMDB 2, PA_MPJPE: 37.5727, MPJPE: 57.7865, PVE: 70.2673, ACCEL: 4.9417, WA_MPJPE: 128.3450, W_MPJPE: 327.7562, RTE: 4.0122, JITTER: 20.5294, FS: 4.1440,
+
+
+
+# difftraj
+# EMDB 2
+# flat
+python -m lib.eval.evaluate_emdb --cfg configs/yamls/demo.yaml --eval-split 2 --skip_non_flat_ground --eval_difftraj TRAIN.CHECKPOINT checkpoints/wham_vit_w_3dpw.pth.tar 
+# Evaluation on EMDB 2, PA_MPJPE: 37.5727, MPJPE: 57.7865, PVE: 70.2673, ACCEL: 4.9417, WA_MPJPE: 121.0880, W_MPJPE: 306.9847, RTE: 3.7459, JITTER: 18.0282, FS: 5.2395,
+
+
+# VAE
+# EMDB 2
+# non flat
+python -m lib.eval.evaluate_emdb --cfg configs/yamls/demo.yaml --eval-split 2 --eval_vae TRAIN.CHECKPOINT checkpoints/wham_vit_w_3dpw.pth.tar 
 
 ```
 

@@ -96,7 +96,8 @@ def parse_args(test=False):
     parser.add_argument('--render', default=False, type=bool_arg,help='Render SMPL meshes after the evaluation')
     parser.add_argument('--save-results', default=False, type=bool_arg,help='Save SMPL parameters after the evaluation')
     parser.add_argument("--eval_difftraj", action="store_true", help="evaluate difftraj")
-
+    parser.add_argument("--eval_vae", action="store_true", help="evaluate VAE from GLAMR")
+    parser.add_argument("--skip_non_flat_ground", action="store_true", help="remove non-flat ground case to evaluate difftraj")
     parser.add_argument("opts", default=None, nargs=argparse.REMAINDER,help="Modify config options using the command-line")
     
     args = parser.parse_args()

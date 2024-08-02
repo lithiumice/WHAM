@@ -29,6 +29,7 @@ from lib.eval.eval_utils import (
     compute_jitter,
     compute_foot_sliding,
     batch_compute_similarity_transform_torch,
+    align_pcl,
 )
 from lib.utils import transforms
 from lib.utils.utils import prepare_output_dir
@@ -73,19 +74,22 @@ def main(cfg, args):
     accumulator = defaultdict(list)
     bar = Bar('Inference', fill='#', max=len(eval_loader))
     
-    if args.eval_difftraj:
-        sys.path.insert(0, "/home/hualin/MotionCapture/DiffTraj")
-        from difftraj import DiffTraj
-        from difftraj_api import DIFFTRAJ_CONFIG_1
-        traj_predictor = DiffTraj(**DIFFTRAJ_CONFIG_1)
-        
-    # import ipdb;ipdb.set_trace()
-    if args.eval_vae:
-        sys.path.insert(0, "/home/hualin/MotionCapture/DiffTraj")
-        from eval.eval_difftraj import init_vae_model, infer_vae, infer_vae_from_axis
-        from utils.traj_utils import (traj_local2global_heading, )
-        from utils.tensor_utils import apply_cvt_R, apply_cvt_T, zup_to_yup
-        traj_predictor = init_vae_model()
+    
+    # <===============
+    # if args.eval_difftraj or args.vis_eval_traj_for_compare:
+    sys.path.insert(0, "/home/hualin/MotionCapture/DiffTraj")
+    
+    from difftraj import DiffTraj
+    from difftraj_api import DIFFTRAJ_CONFIG_1, DIFFTRAJ_CONFIG_2
+    difftraj_traj_predictor = DiffTraj(**DIFFTRAJ_CONFIG_2)
+    # difftraj_traj_predictor = DiffTraj(**DIFFTRAJ_CONFIG_1)
+
+    from utils.traj_utils import (traj_local2global_heading, )
+    from utils.tensor_utils import apply_cvt_R, apply_cvt_T, zup_to_yup, toth, tonp
+    from eval.eval_difftraj import init_vae_model, infer_vae, infer_vae_from_axis
+    vae_traj_predictor = init_vae_model()
+    # ===============>
+    
         
     with torch.no_grad():
         for i in range(len(eval_loader)):
@@ -142,27 +146,43 @@ def main(cfg, args):
             def totype(x): return x.float().cuda()
             # import ipdb;ipdb.set_trace()
             
-            if args.eval_difftraj:
+            # Convert WHAM global orient to Y-up coordinate
+            def convert_to_wham_gt(root, trans):
+                poses_root = root.squeeze(0)
+                pred_trans = trans.squeeze(0)
+                poses_root = yup2ydown.mT @ poses_root
+                pred_trans = (yup2ydown.mT @ pred_trans.unsqueeze(-1)).squeeze(-1)
+                return poses_root, pred_trans
+            
+            wham_poses_root, wham_pred_trans = convert_to_wham_gt(pred['poses_root_world'], pred['trans_world'])
+            
+            if args.eval_difftraj or args.vis_eval_traj_for_compare:
                 pred_trans_world = totype(pred["trans_world"][0])
                 pred_root_world = totype(transforms.matrix_to_axis_angle(pred["poses_root_world"]).reshape(-1, 3))
                 pred_body_pose = totype(transforms.matrix_to_axis_angle(pred["poses_body"]).reshape(-1, 69))
-                difftraj_root, difftraj_trans = traj_predictor(pred_root_world, pred_body_pose, pred_trans_world)
-                pred["poses_root_world"] = transforms.axis_angle_to_matrix(difftraj_root)
-                pred["trans_world"] = difftraj_trans
+                root, trans = difftraj_traj_predictor(pred_root_world, pred_body_pose, pred_trans_world)
+                root = transforms.axis_angle_to_matrix(root)
+                difftraj_unified_root, difftraj_unified_trans = convert_to_wham_gt(root, trans)
+                
+            if args.eval_difftraj:
+                pred["poses_root_world"] = root
+                pred["trans_world"] = trans
                             
-            if args.eval_vae:
+            if args.eval_vae or args.vis_eval_traj_for_compare:
                 pred_body_pose = totype(transforms.matrix_to_axis_angle(pred["poses_body"]).reshape(-1, 23, 3))
-                sample_rep_pred = infer_vae_from_axis(traj_predictor, pred_body_pose)
-
+                sample_rep_pred = infer_vae_from_axis(vae_traj_predictor, pred_body_pose)
                 transl_amass_pred, orient_q_amass_pred = traj_local2global_heading(sample_rep_pred)
                 root = apply_cvt_R(zup_to_yup, orient_q_amass_pred, in_type='quat', out_type='aa')
                 trans = apply_cvt_T(zup_to_yup, transl_amass_pred)   
-                pred["poses_root_world"] = transforms.axis_angle_to_matrix(root)
+                root = transforms.axis_angle_to_matrix(root)
+                vae_unified_root, vae_unified_trans = convert_to_wham_gt(root, trans)
+                
+            if args.eval_vae:
+                pred["poses_root_world"] = root
                 pred["trans_world"] = trans
-                                                            
+                          
             # <======= Prepare groundtruth data
             subj, seq = batch['vid'][:2], batch['vid'][3:]
-            # import ipdb;ipdb.set_trace()
             annot_pth = glob(osp.join(_C.PATHS.EMDB_PTH, subj, seq, '*_data.pkl'))[0]
             annot = pickle.load(open(annot_pth, 'rb'))
             
@@ -187,11 +207,27 @@ def main(cfg, args):
             target_j3d_cam = target_cam.joints[:, :24][masks]
             # =======>
             
+            def align_trans(target_trans, pred_trans):
+                _min_len = min(len(target_trans), len(pred_trans))
+                _, rot, trans = align_pcl(target_trans[None, :_min_len], pred_trans[None, :_min_len], fixed_scale=True)
+                pred_trans_hat = (torch.einsum("tij,tnj->tni", rot, pred_trans[None, :]) + trans[None, :])[0]
+                return pred_trans_hat
+            
+            # import ipdb;ipdb.set_trace()
+            gt_trans = toth(trans)
+            if args.vis_eval_traj_for_compare:
+                np.savez(npz_save_path := f"debug/traj_for_vis_bs{i}.npz", vae_unified_root=tonp(vae_unified_root), vae_unified_trans=tonp(vae_unified_trans),
+                         difftraj_unified_root=tonp(difftraj_unified_root), difftraj_unified_trans=tonp(difftraj_unified_trans),
+                         wham_poses_root=tonp(wham_poses_root), wham_pred_trans=tonp(wham_pred_trans),
+                         gt_poses_root=tonp(poses_root), gt_trans=tonp(gt_trans),
+                         aligned_wham_trans=tonp(align_trans(gt_trans, wham_pred_trans.cpu())),
+                         aligned_vae_trans=tonp(align_trans(gt_trans, vae_unified_trans.cpu())),
+                         aligned_difftraj_trans=tonp(align_trans(gt_trans, difftraj_unified_trans.cpu())),)
+                print(f"[INFO] npz data will saved to {npz_save_path}")
+                                                  
+                                                              
             # Convert WHAM global orient to Y-up coordinate
-            poses_root = pred['poses_root_world'].squeeze(0)
-            pred_trans = pred['trans_world'].squeeze(0)
-            poses_root = yup2ydown.mT @ poses_root
-            pred_trans = (yup2ydown.mT @ pred_trans.unsqueeze(-1)).squeeze(-1)
+            poses_root, pred_trans = convert_to_wham_gt(pred['poses_root_world'], pred['trans_world'])
             
             # <======= Build predicted motion
             # Predicted global motion
@@ -205,9 +241,7 @@ def main(cfg, args):
             # =======>
             
             # <======= Evaluation on the local motion
-            pred_j3d_cam, target_j3d_cam, pred_verts_cam, target_verts_cam = batch_align_by_pelvis(
-                [pred_j3d_cam, target_j3d_cam, pred_verts_cam, target_verts_cam], pelvis_idxs
-            )
+            pred_j3d_cam, target_j3d_cam, pred_verts_cam, target_verts_cam = batch_align_by_pelvis([pred_j3d_cam, target_j3d_cam, pred_verts_cam, target_verts_cam], pelvis_idxs)
             S1_hat = batch_compute_similarity_transform_torch(pred_j3d_cam, target_j3d_cam)
             pa_mpjpe = torch.sqrt(((S1_hat - target_j3d_cam) ** 2).sum(dim=-1)).mean(dim=-1).cpu().numpy() * m2mm
             mpjpe = torch.sqrt(((pred_j3d_cam - target_j3d_cam) ** 2).sum(dim=-1)).mean(dim=-1).cpu().numpy() * m2mm
@@ -243,10 +277,10 @@ def main(cfg, args):
             foot_sliding = compute_foot_sliding(target_glob, pred_glob, masks) * m2mm
             # =======>
             
-            # Additional metrics
-            rte = compute_rte(torch.from_numpy(trans[masks]), pred_trans.cpu()) * 1e2
-            jitter = compute_jitter(pred_glob, fps=30)
-            foot_sliding = compute_foot_sliding(target_glob, pred_glob, masks) * m2mm
+            # # Additional metrics
+            # rte = compute_rte(torch.from_numpy(trans[masks]), pred_trans.cpu()) * 1e2
+            # jitter = compute_jitter(pred_glob, fps=30)
+            # foot_sliding = compute_foot_sliding(target_glob, pred_glob, masks) * m2mm
             
             # <======= Accumulate the results over entire sequences
             accumulator['pa_mpjpe'].append(pa_mpjpe)
@@ -266,11 +300,9 @@ def main(cfg, args):
                                 f"RTE: {rte.mean():.1f}   "\
                                 f"jitter: {jitter.mean():.1f}   "\
                                 f"FS: {foot_sliding.mean():.1f}   "
-            # summary_string = f'{batch["vid"]} | PA-MPJPE: {pa_mpjpe.mean():.1f}   MPJPE: {mpjpe.mean():.1f}   PVE: {pve.mean():.1f}'
             bar.suffix = summary_string
             bar.next()
             # =======>            
-            # =======>
             
     for k, v in accumulator.items():
         accumulator[k] = np.concatenate(v).mean()

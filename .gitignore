@@ -5,3 +5,7 @@ examples/
 third-party/
 third-party/ViTPose
 fetch_demo_data.sh
+debug*
+data/
+checkpoints
+dataset

@@ -37,7 +37,7 @@ TRACKING_THR = 0.1
 MINIMUM_FRMAES = 30
 MINIMUM_JOINTS = 6
 
-import ipdb;ipdb.set_trace()
+# import ipdb;ipdb.set_trace()
 
 class DetectionModel(object):
     def __init__(self, device):

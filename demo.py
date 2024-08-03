@@ -24,10 +24,11 @@ from lib.models.preproc.extractor import FeatureExtractor
 from lib.models.smplify import TemporalSMPLify
 
 try: 
-    import ipdb;ipdb.set_trace()
+    # import ipdb;ipdb.set_trace()
     from lib.models.preproc.slam import SLAMModel # Segmentation fault (core dumped)
     _run_global = True
 except: 
+    import traceback; traceback.print_exc()
     logger.info('DPVO is not properly installed. Only estimate in local coordinates !')
     _run_global = False
 

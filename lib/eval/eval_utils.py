@@ -464,9 +464,7 @@ def compute_jitter(pred_output, fps=30):
 def compute_rte(target_trans, pred_trans):
     # Compute the global alignment
     _, rot, trans = align_pcl(target_trans[None, :], pred_trans[None, :], fixed_scale=True)
-    pred_trans_hat = (
-        torch.einsum("tij,tnj->tni", rot, pred_trans[None, :]) + trans[None, :]
-    )[0]
+    pred_trans_hat = (torch.einsum("tij,tnj->tni", rot, pred_trans[None, :]) + trans[None, :])[0]
     
     # Compute the entire displacement of ground truth trajectory
     disps, disp = [], 0
@@ -480,3 +478,4 @@ def compute_rte(target_trans, pred_trans):
     
     # Normalize it to the displacement
     return (rte / disp).numpy()
+

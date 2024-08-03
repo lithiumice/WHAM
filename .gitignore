@@ -5,13 +5,10 @@ examples/
 third-party/
 third-party/ViTPose
 fetch_demo_data.sh
-<<<<<<< HEAD
 dataset
 checkpoints
 output/
-=======
 debug*
 data/
 checkpoints
 dataset
->>>>>>> 667cc89a333a51aa45c8576134702f45c4832110

@@ -173,6 +173,22 @@ def run(cfg,
         results[_id]['betas'] = pred['betas'].cpu().squeeze(0).numpy()
         results[_id]['verts'] = (pred['verts_cam'] + pred['trans_cam'].unsqueeze(1)).cpu().numpy()
         results[_id]['frame_ids'] = frame_id
+        
+        if save_pkl:
+            # 得到的npz在blender里面可视化是头朝y+
+            # 需要：1. 绕x轴逆时针90度（+90） 2. 绕z轴90度（+90）
+            pose = pred_pose_world.reshape(-1, 24, 3)[:, :22, :]
+            pose = np.concatenate([pose, np.zeros((pose.shape[0], 33, 3))], axis=1).reshape(-1, 55, 3)
+            to_save = {
+                "betas": pred['betas'].cpu().numpy()[0,0,:],  # shape: 10
+                "trans": pred['trans_world'].cpu().numpy()[0,:,:],  # shape: T,3
+                "poses": pose, # shape:  T, 55, 3
+                "mocap_framerate": fps,
+                "gender": "male",
+            }
+            npz_save_path = os.path.join(output_pth, f"{_id}.npz")
+            np.savez(npz_save_path, **to_save)
+            print(f"Saved to {npz_save_path}")            
     
     if save_pkl:
         joblib.dump(results, osp.join(output_pth, "wham_output.pkl"))

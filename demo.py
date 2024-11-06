@@ -175,20 +175,80 @@ def run(cfg,
         results[_id]['frame_ids'] = frame_id
         
         if save_pkl:
+
+            from pytorch3d.transforms import axis_angle_to_matrix as a2m
+            from pytorch3d.transforms import matrix_to_axis_angle as m2a  
+            
+            
+            
+            def _rot_around_axis(R, T, rot_angle_axis_tensor, angle=0):
+                rot_deg = (angle / 180) * np.pi
+                cvt = a2m(rot_angle_axis_tensor * rot_deg).type_as(R)
+                
+                R = m2a(cvt.mT @ a2m(R))
+                
+                T = torch.einsum("ij,...tj->...ti", cvt.mT[0], T)
+                
+                return R, T
+            
+            
+            
+            flip_x_rot_deg = -90
+            flip_y_rot_deg = 0
+            flip_z_rot_deg = -90
+
+            pred_pose_world_th = torch.from_numpy(pred_pose_world).reshape(-1, 24, 3)[:, :22, :]
+
+            pred_root_world_th = pred_pose_world_th[:, 0, :].clone()
+            pred_local_body_th = pred_pose_world_th[:, 1:, :].clone()
+            pred_trans_th = pred['trans_world'].cpu()[0].clone()
+
+            if flip_x_rot_deg != 0:
+                print(f"Rotate around X axis for {flip_x_rot_deg} degree...")
+                pred_root_world_th, pred_trans_th = _rot_around_axis(R=pred_root_world_th, T=pred_trans_th, rot_angle_axis_tensor=torch.tensor([[1, 0, 0]]), angle=flip_x_rot_deg)
+
+            if flip_y_rot_deg != 0:
+                print(f"Rotate around Y axis for {flip_y_rot_deg} degree...")
+                pred_root_world_th, pred_trans_th = _rot_around_axis(R=pred_root_world_th, T=pred_trans_th, rot_angle_axis_tensor=torch.tensor([[0, 1, 0]]), angle=flip_y_rot_deg)
+
+            if flip_z_rot_deg != 0:
+                print(f"Rotate around Z axis for {flip_z_rot_deg} degree...")
+                pred_root_world_th, pred_trans_th = _rot_around_axis(R=pred_root_world_th, T=pred_trans_th, rot_angle_axis_tensor=torch.tensor([[0, 0, 1]]), angle=flip_z_rot_deg)
+
+
+                
             # 得到的npz在blender里面可视化是头朝y+
-            # 需要：1. 绕x轴逆时针90度（+90） 2. 绕z轴90度（+90）
-            pose = pred_pose_world.reshape(-1, 24, 3)[:, :22, :]
-            pose = np.concatenate([pose, np.zeros((pose.shape[0], 33, 3))], axis=1).reshape(-1, 55, 3)
+            if False:
+                # 得到的npz在blender里面可视化是头朝y+
+                # 需要：1. 绕x轴逆时针90度（+90） 2. 绕z轴90度（+90）
+                pose = pred_pose_world.reshape(-1, 24, 3)[:, :22, :]
+                pose = np.concatenate([pose, np.zeros((pose.shape[0], 33, 3))], axis=1).reshape(-1, 55, 3)
+                to_save = {
+                    "betas": pred['betas'].cpu().numpy()[0,0,:],  # shape: 10
+                    "trans": pred['trans_world'].cpu().numpy()[0,:,:],  # shape: T,3
+                    "poses": pose, # shape:  T, 55, 3
+                    "mocap_framerate": fps,
+                    "gender": "male",
+                }
+                npz_save_path = os.path.join(output_pth, f"{_id}.npz")
+                np.savez(npz_save_path, **to_save)
+                print(f"Saved to {npz_save_path}")    
+                        
+            # 为了得到头朝z+，在blender里面需要：1. 绕x轴逆时针90度（+90） 2. 绕z轴90度（+90）
+            # 为了得到头朝z+，在程序里面需要：1. 绕x轴逆时针90度（-90） 2. 绕z轴90度（-90）
+            pose = np.concatenate([pred_root_world_th.cpu().numpy().reshape(-1,1,3), pred_local_body_th.cpu().numpy(), np.zeros((pose.shape[0], 33, 3))], axis=1).reshape(-1, 55, 3)
             to_save = {
                 "betas": pred['betas'].cpu().numpy()[0,0,:],  # shape: 10
-                "trans": pred['trans_world'].cpu().numpy()[0,:,:],  # shape: T,3
+                "trans": pred_trans_th.cpu().numpy(),  # shape: T,3
                 "poses": pose, # shape:  T, 55, 3
                 "mocap_framerate": fps,
                 "gender": "male",
             }
-            npz_save_path = os.path.join(output_pth, f"{_id}.npz")
+            npz_save_path = os.path.join(output_pth, f"idx{_id}_blender.npz")
             np.savez(npz_save_path, **to_save)
             print(f"Saved to {npz_save_path}")            
+    
+    
     
     if save_pkl:
         joblib.dump(results, osp.join(output_pth, "wham_output.pkl"))
